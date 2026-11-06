@@ -1,0 +1,78 @@
+{
+  "bitrate_bps": 500000,
+  "E1_baseline": {
+    "defense": "none",
+    "spoofs_landed": 100,
+    "spoofs_suppressed": 33,
+    "attacker_busoff": false,
+    "attacker_final_tec": 165
+  },
+  "E2_parrot": {
+    "defense": "parrot",
+    "spoofs_landed": 0,
+    "spoofs_suppressed": 32,
+    "attacker_busoff": true,
+    "owner_busoff": false,
+    "time_to_attacker_busoff_ms": 94.0,
+    "injections_until_busoff": 32
+  },
+  "E3_naive_strict_both": {
+    "defense": "naive mirror (both colliding transmitters take the error)",
+    "attacker_busoff": true,
+    "attacker_final_tec": 256,
+    "owner_busoff": false,
+    "owner_final_tec": 165,
+    "owner_final_state": "error_passive",
+    "note": "naive echo inflicts heavy collateral TEC on the defender (driven toward bus-off / error-passive); Parrot keeps the defender near TEC=0 -- this is the motivation for Parrot's design"
+  },
+  "E4_sweep": [
+    {
+      "inject_period_bits": 400,
+      "inject_rate_hz": 1250.0,
+      "time_to_busoff_ms": 25.2,
+      "injections_until_busoff": 32
+    },
+    {
+      "inject_period_bits": 700,
+      "inject_rate_hz": 714.3,
+      "time_to_busoff_ms": 43.8,
+      "injections_until_busoff": 32
+    },
+    {
+      "inject_period_bits": 1000,
+      "inject_rate_hz": 500.0,
+      "time_to_busoff_ms": 62.4,
+      "injections_until_busoff": 32
+    },
+    {
+      "inject_period_bits": 1500,
+      "inject_rate_hz": 333.3,
+      "time_to_busoff_ms": 93.4,
+      "injections_until_busoff": 32
+    },
+    {
+      "inject_period_bits": 2500,
+      "inject_rate_hz": 200.0,
+      "time_to_busoff_ms": 155.4,
+      "injections_until_busoff": 32
+    },
+    {
+      "inject_period_bits": 4000,
+      "inject_rate_hz": 125.0,
+      "time_to_busoff_ms": 248.4,
+      "injections_until_busoff": 32
+    },
+    {
+      "inject_period_bits": 6000,
+      "inject_rate_hz": 83.3,
+      "time_to_busoff_ms": 372.4,
+      "injections_until_busoff": 32
+    }
+  ],
+  "E5_false_positive": {
+    "scenario": "3 legit ECUs, Parrot ON, no attacker",
+    "any_busoff": false,
+    "max_tec": 0,
+    "spoofs_detected": 0
+  }
+}

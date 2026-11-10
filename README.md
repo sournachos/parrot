@@ -5,7 +5,7 @@ Reference paper: *Parrot, a software-only anti-spoofing defense system for the C
 Authors: Jose Rivera and Daniel Carrasco Moreno.
 Repo: <https://github.com/sournachos/parrot>
 
-## What this is
+## What this is?
 
 A **bit-level, data-link-layer CAN simulator** written from scratch in Python,
 used to implement and evaluate the Parrot defense. It reproduces the part of CAN

@@ -1,0 +1,11 @@
+{
+  "name": "parrot-report",
+  "private": true,
+  "description": "Builds Parrot_Report.docx from out/ figures",
+  "scripts": {
+    "build-report": "node build_report.js"
+  },
+  "dependencies": {
+    "docx": "9.0.2"
+  }
+}

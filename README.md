@@ -38,7 +38,7 @@ parrot_sim/
   can_core.py     bus wired-AND, frame encoding + CRC15 + bit stuffing,
                   TEC/REC state machine, collision resolver
   simulator.py    EcuNode / Attacker nodes + bus scheduler (+ Parrot reaction)
-selftest.py       13 checks that the layer behaves like CAN (run this first)
+selftest.py       8 tests that the layer behaves like CAN (run this first)
 experiments.py    runs all scenarios, writes out/*.csv and out/summary.json
 make_plots.py     renders out/*.png from the CSVs
 out/              generated results (CSV, JSON, PNG)
@@ -47,7 +47,7 @@ out/              generated results (CSV, JSON, PNG)
 ## Run it
 
 ```bash
-python3 selftest.py       # 13/13 must PASS before trusting any result
+python3 selftest.py       # all 8 must PASS before trusting any result
 python3 experiments.py    # writes out/summary.json + out/*.csv
 python3 make_plots.py     # writes out/fig1..4.png
 ```
@@ -58,12 +58,12 @@ No third-party dependencies except `matplotlib` (plots only). Python 3.10+.
 | Scenario | Defense | Spoofs that reached the bus | Attacker | Defender |
 |---|---|---|---|---|
 | E1 baseline | none | **100** land | healthy | — |
-| E2 Parrot | Parrot | **0** land | **bus-off @ ~94 ms** (32 injections) | TEC ≈ 0 |
-| E3 naive mirror | echo, both error | 0 land | bus-off | **driven to ~240 TEC (error-passive)** — collateral |
+| E2 Parrot | Parrot | **0** land | **bus-off @ ~94 ms** (32 injections) | never error-passive |
+| E3 defender cost | Parrot (E2 run) | — | — | **TEC peaks at 121 @ 46 ms, stays error-active, recovers to 21** |
 | E5 false-positive | Parrot, no attacker | — | — | no node bus-off, max TEC = 0 |
 
 - **fig1** attacker TEC vs time — Parrot vs no defense
-- **fig2** defender TEC vs time — Parrot vs naive mirror (why naive echo is a bad idea)
+- **fig2** defender TEC vs time under Parrot — the cost of active error flags
 - **fig3** time-to-bus-off vs injection rate (≈ 32 / rate)
 - **fig4** spoofed frames delivered: 100 → 0
 
@@ -72,10 +72,13 @@ No third-party dependencies except `matplotlib` (plots only). Python 3.10+.
 1. **Error frames are not emitted bit-for-bit** — the TEC/REC deltas they would
    produce are applied directly. Standard testbed simplification; does not change
    the counter dynamics that cause bus-off.
-2. **Per-collision TEC bookkeeping is explicit and tunable** (`CollisionModel` in
-   `can_core.py`, `mode="parrot"` vs `"strict_both"`, with adjustable deltas).
-   **This is the one thing to reconcile against the Parrot paper's error-handling
-   analysis** — set the deltas to match and the results update automatically.
+2. **Per-collision TEC bookkeeping follows ISO 11898-1 error flags**
+   (`apply_collision_errors` in `can_core.py`). While the attacker is
+   error-active its Active Error Flag aborts the frame and *both* transmitters
+   take TEC += 8; once it is error-passive its flag is recessive, the owner's
+   frame completes and only the attacker is charged. An earlier version used a
+   hand-tuned `CollisionModel` that assumed the owner was never charged; the
+   ISO model shows Parrot's real cost to the defender (E3, fig2).
 3. Timing is event-level (frame + IFS in bit-times), not analog CAN-H/CAN-L
    waveforms. Appropriate for counter/bus-off dynamics, not for physical-layer
    effects.

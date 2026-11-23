@@ -4,7 +4,8 @@ const {
   ImageRun, Table, TableRow, TableCell, WidthType, BorderStyle, ShadingType,
 } = require("docx");
 
-const OUT = "/home/claude/parrot_sim/out";
+const path = require("path");
+const OUT = path.join(__dirname, "out");
 const img = (f) => fs.readFileSync(`${OUT}/${f}`);
 
 const FONT = "Calibri";
@@ -71,8 +72,8 @@ const resultsTable = new Table({
   rows: [
     headerRow(["Scenario", "Defense", "Spoofs reaching the bus", "Attacker", "Defender"]),
     row(["E1 — baseline", "none", "100 (all land)", "healthy", "—"]),
-    row(["E2 — Parrot", "Parrot", "0", "bus-off @ ~94 ms", "TEC ≈ 0"]),
-    row(["E3 — naive mirror", "echo (both error)", "0", "bus-off", "driven to ~240 TEC (error-passive)"]),
+    row(["E2 — Parrot", "Parrot", "0", "bus-off @ ~94 ms", "never error-passive"]),
+    row(["E3 — defender cost", "Parrot (E2 run)", "—", "—", "TEC peaks at 121, recovers to 21"]),
     row(["E5 — false-positive", "Parrot, no attacker", "—", "—", "no bus-off, max TEC = 0"]),
   ],
 });
@@ -118,7 +119,7 @@ const doc = new Document({
       p([{ text: "Parrot reaction. ", bold: true },
          "When a defended owner observes a frame carrying its own ID that it did not originate, it contends for that ID in the same bus slot with an all-dominant payload. Since it wins every data-bit contention, the spoofer reads back a dominant bit where it drove a recessive one, takes a bit error, and its TEC rises by 8 per contested injection."]),
       p([{ text: "Validation. ", bold: true },
-         "A self-test asserts 13 properties of the layer before any result is trusted — including bus-off after exactly 32 transmit errors, error-passive at TEC = 128, bit stuffing never permitting six equal bits, lower ID winning arbitration, and an all-dominant owner beating a spoofer in the data field. All 13 pass. Well-known tools used: Python 3 and matplotlib (figures only)."]),
+         "A self-test suite of 8 tests checks the layer before any result is trusted — including bit stuffing never permitting six equal bits, lower ID winning arbitration, 16 active-error collisions driving both nodes to TEC = 128, the 17th collision breaking the symmetry, and an end-to-end run where the attacker reaches bus-off while the owner stays error-active. All 8 pass. Well-known tools used: Python 3 and matplotlib (figures only)."]),
 
       h("Experiments", HeadingLevel.HEADING_1),
       p([{ text: "The code accompanies this report and is available at ", },
@@ -126,7 +127,7 @@ const doc = new Document({
          { text: ": experiments.py runs every scenario and writes the CSV traces and summary.json; make_plots.py renders the figures; selftest.py validates the layer. The scenarios were:" }]),
       bullet([{ text: "E1 — Baseline, no defense. ", bold: true }, "Owner 0x120 transmits periodically; attacker spoofs 0x120."]),
       bullet([{ text: "E2 — Parrot ON. ", bold: true }, "Same configuration with the defense enabled."]),
-      bullet([{ text: "E3 — Naive mirror. ", bold: true }, "The owner echoes, but both colliding transmitters take the error — to show why a naive echo is insufficient."]),
+      bullet([{ text: "E3 — Defender cost. ", bold: true }, "From the E2 run, the owner's own TEC is tracked: its peak, when it peaks, whether it ever leaves error-active, and where it ends."]),
       bullet([{ text: "E4 — Injection-rate sweep. ", bold: true }, "Time-to-bus-off as the attacker's injection rate varies from 83 to 1250 frames/s."]),
       bullet([{ text: "E5 — False positives. ", bold: true }, "Three legitimate ECUs, Parrot active on each, no attacker."]),
 
@@ -134,7 +135,7 @@ const doc = new Document({
       resultsTable,
       new Paragraph({ spacing: { after: 60 } }),
       ...figure("fig1_attacker_tec.png", "Figure 1. Attacker TEC over time. With Parrot the counter rises 8 per contested injection and crosses the bus-off threshold after 32 injections (~94 ms); without a defense it stays healthy."),
-      ...figure("fig2_defender_collateral.png", "Figure 2. Cost to the defender. Parrot keeps the owner near TEC = 0, whereas a naive mirror drags it to ~240 TEC (error-passive, near bus-off) as collateral damage."),
+      ...figure("fig2_defender_collateral.png", "Figure 2. Cost to the defender. While the attacker is error-active, Active Error Flags charge the owner too; its TEC peaks at 121 (just below error-passive) and then decays once the attacker's flags turn recessive."),
       ...figure("fig3_time_to_busoff.png", "Figure 3. Time-to-bus-off versus injection rate. It scales as ~32 / rate: a more aggressive attacker is ejected faster."),
       ...figure("fig4_spoof_success.png", "Figure 4. Spoofed frames delivered to the bus: 100 without a defense, 0 with Parrot.", 330, 257),
 
@@ -143,8 +144,8 @@ const doc = new Document({
          "100 spoofed frames reach the bus and the attacker remains healthy — the direct consequence of CAN having no source authentication. This is the same missing property that makes the ICSim replay lab succeed."]),
       p([{ text: "Parrot ejects the attacker (E2, Figure 1). ", bold: true },
          "The attacker reaches bus-off after exactly 32 contested injections (~94 ms) and zero spoofed frames are delivered. The count matches first principles: ceil(256 / 8) = 32."]),
-      p([{ text: "Parrot protects the defender; naive mirroring does not (Figure 2). ", bold: true },
-         "Under Parrot the defender's TEC stays near zero because it wins each exchange (a successful transmit). A naive echo instead drives the defender to ~240 TEC — deep into error-passive — which is why the reaction must be asymmetric. This contrast is the core design insight."]),
+      p([{ text: "Parrot is not free for the defender (E3, Figure 2). ", bold: true },
+         "Under ISO 11898-1 rules, while the attacker is error-active each collision is aborted by its Active Error Flag and both transmitters take TEC += 8, so the owner's TEC climbs with the attacker's and peaks at 121 at ~46 ms, just below the error-passive threshold of 127. Once the attacker is error-passive its flag is recessive, the owner's frames complete, and the asymmetry takes over: the attacker reaches bus-off while the owner recovers to 21 without ever leaving error-active. An earlier version of our model assumed the owner was never charged; applying the standard's error-flag rules showed that understated the cost. The margin is thin, so a defender already carrying errors could be pushed error-passive."]),
       p([{ text: "Rate scaling (E4, Figure 3) and false positives (E5). ", bold: true },
          "Time-to-bus-off scales as ~32 / injection-rate, so the defense scales against its worst case, while injections-to-bus-off stays fixed at 32. With legitimate-only traffic and Parrot active on every ECU, no node ever reaches bus-off and all TECs remain 0 — Parrot reacts only to a foreign frame on an ID it owns."]),
       p([{ text: "Why spoofing/replay worked at all. ", bold: true },
@@ -152,7 +153,7 @@ const doc = new Document({
 
       h("Limitations and critical evaluation", HeadingLevel.HEADING_2),
       bullet("Error frames are represented by their counter effect, not emitted bit-for-bit. This is a standard testbed simplification and does not change the TEC/REC dynamics that cause bus-off."),
-      bullet("The per-collision TEC bookkeeping is an explicit, tunable model (CollisionModel, with parrot and strict_both modes and adjustable deltas). The exact accounting must be reconciled with the reference paper's error-handling analysis; we expose it as a single parameter rather than hiding the assumption."),
+      bullet("Per-collision TEC bookkeeping follows the ISO 11898-1 active/passive error-flag rules, replacing an earlier hand-tuned model that assumed the defender was never charged and so hid its real cost."),
       bullet("Timing is event-level (frame plus inter-frame space, in bit-times), not analog CAN-H/CAN-L waveforms — appropriate for counter and bus-off dynamics, not for physical-layer effects."),
       bullet("Per the course guidance, these are testbed-quality limitations rather than defects: the mechanism, the thresholds and the scaling all match first-principles CAN behaviour, and the self-test suite confirms the layer before any result is read."),
     ],
@@ -160,6 +161,6 @@ const doc = new Document({
 });
 
 Packer.toBuffer(doc).then((b) => {
-  fs.writeFileSync("/home/claude/parrot_sim/Parrot_Report.docx", b);
+  fs.writeFileSync(path.join(__dirname, "Parrot_Report.docx"), b);
   console.log("wrote Parrot_Report.docx", b.length, "bytes");
 });

@@ -1,0 +1,94 @@
+name: Simulation regression
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scenarios:
+    name: Run defense scenarios and verify outcomes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install plotting dependency
+        run: python -m pip install --upgrade pip matplotlib
+
+      - name: Run all simulation experiments
+        run: python experiments.py
+
+      - name: Verify expected security outcomes
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          summary = json.loads(Path("out/summary.json").read_text())
+
+          required = {
+              "E1_baseline",
+              "E2_parrot",
+              "E3_defender_cost",
+              "E4_sweep",
+              "E5_false_positive",
+          }
+          assert required <= summary.keys(), (
+              f"Missing experiments: {sorted(required - summary.keys())}"
+          )
+
+          baseline = summary["E1_baseline"]
+          assert baseline["spoofs_landed"] > 0
+          assert not baseline["attacker_busoff"]
+
+          parrot = summary["E2_parrot"]
+          assert parrot["spoofs_landed"] == 0
+          assert parrot["attacker_busoff"]
+          assert not parrot["owner_busoff"]
+
+          # ISO 11898-1: active error flags charge the owner too while the
+          # attacker is error-active, but the owner must stay error-active
+          # and recover once the attacker is ejected.
+          cost = summary["E3_defender_cost"]
+          assert 0 < cost["owner_peak_tec"] < 128, cost
+          assert not cost["owner_ever_error_passive"], cost
+          assert not cost["owner_busoff"], cost
+          assert cost["owner_final_tec"] < cost["owner_peak_tec"], cost
+
+          sweep = summary["E4_sweep"]
+          assert len(sweep) == 7
+          assert all(row["time_to_busoff_ms"] > 0 for row in sweep)
+
+          false_positive = summary["E5_false_positive"]
+          assert not false_positive["any_busoff"]
+          assert false_positive["max_tec"] == 0
+          assert false_positive["spoofs_detected"] == 0
+
+          print("All experiment outcome contracts passed.")
+          PY
+
+      - name: Render experiment plots
+        run: python make_plots.py
+
+      - name: Upload simulation outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parrot-simulation-results
+          path: out/
+          if-no-files-found: warn
+          retention-days: 14

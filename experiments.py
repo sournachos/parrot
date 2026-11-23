@@ -5,7 +5,8 @@ Run:  python3 experiments.py
 Scenarios
   E1 baseline  : legitimate ECU + attacker, NO defense   -> spoofs land
   E2 parrot    : same, Parrot defense ON                 -> attacker -> bus-off
-  E3 naive     : "strict_both" mirroring (motivation)    -> BOTH -> bus-off
+  E3 cost      : defender's own TEC under Parrot (E2 run)  -> spikes, stays
+                 error-active, recovers
   E4 sweep     : time-to-bus-off vs injection rate
   E5 falsepos  : legit-only bus, Parrot ON, no attacker  -> nobody bus-off
 """
@@ -84,22 +85,27 @@ summary["E2_parrot"] = {
     "injections_until_busoff": atk.injections,
 }
 
-# ---- E3 naive mirroring: strict_both (why naive echo fails) ----------------
-owner = EcuNode("ECU_0x120", 0x120, period_bits=2000, parrot=True)
-atk = Attacker("ATTACKER", 0x120, inject_period_bits=1500, phase=500)
-bus = Bus([owner, atk], BITRATE)
-bus.run(200_000)
-write_csv(f"{OUT}/trace_naive.csv", trace_rows(bus, owner.name, atk.name), HEADER)
-summary["E3_naive_strict_both"] = {
-    "defense": "naive mirror (both colliding transmitters take the error)",
-    "attacker_busoff": atk.bus_off,
-    "attacker_final_tec": atk.estate.tec,
-    "owner_busoff": owner.bus_off,
+# ---- E3 defender cost: what Parrot costs the owner (same run as E2) --------
+# Under ISO 11898-1 rules, while the attacker is still error-active every
+# collision is aborted by its Active Error Flag and BOTH transmitters take
+# TEC += 8. Once the attacker turns error-passive its flag is recessive, the
+# owner's frame completes (TEC -= 1) and only the attacker keeps climbing.
+owner_tec = [(s.t_ms, s.counters[owner.name][0], s.counters[owner.name][2])
+             for s in bus.log if owner.name in s.counters]
+peak_t, peak_tec, _ = max(owner_tec, key=lambda r: r[1])
+summary["E3_defender_cost"] = {
+    "defense": "parrot",
+    "owner_peak_tec": peak_tec,
+    "owner_peak_t_ms": round(peak_t, 3),
     "owner_final_tec": owner.estate.tec,
     "owner_final_state": owner.estate.state.value,
-    "note": ("naive echo inflicts heavy collateral TEC on the defender "
-             "(driven toward bus-off / error-passive); Parrot keeps the "
-             "defender near TEC=0 -- this is the motivation for Parrot's design"),
+    "owner_ever_error_passive": any(st != NodeState.ERROR_ACTIVE.value
+                                    for _, _, st in owner_tec),
+    "owner_busoff": owner.bus_off,
+    "note": ("while the attacker is error-active, Active Error Flags abort "
+             "every collision and charge the owner too; the owner's TEC "
+             "spikes but stays below the error-passive threshold, then "
+             "decays once the attacker is error-passive / bus-off"),
 }
 
 # ---- E4 sweep: time-to-bus-off vs injection rate ---------------------------

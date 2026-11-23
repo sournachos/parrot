@@ -16,14 +16,15 @@
     "time_to_attacker_busoff_ms": 94.0,
     "injections_until_busoff": 32
   },
-  "E3_naive_strict_both": {
-    "defense": "naive mirror (both colliding transmitters take the error)",
-    "attacker_busoff": true,
-    "attacker_final_tec": 256,
+  "E3_defender_cost": {
+    "defense": "parrot",
+    "owner_peak_tec": 121,
+    "owner_peak_t_ms": 46.0,
+    "owner_final_tec": 21,
+    "owner_final_state": "error_active",
+    "owner_ever_error_passive": false,
     "owner_busoff": false,
-    "owner_final_tec": 165,
-    "owner_final_state": "error_passive",
-    "note": "naive echo inflicts heavy collateral TEC on the defender (driven toward bus-off / error-passive); Parrot keeps the defender near TEC=0 -- this is the motivation for Parrot's design"
+    "note": "while the attacker is error-active, Active Error Flags abort every collision and charge the owner too; the owner's TEC spikes but stays below the error-passive threshold, then decays once the attacker is error-passive / bus-off"
   },
   "E4_sweep": [
     {

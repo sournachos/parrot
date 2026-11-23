@@ -231,6 +231,23 @@ def test_bus_retransmission_and_interframe_gap_timing() -> None:
     assert eve_escaped.estate.state is NodeState.ERROR_PASSIVE
     assert eve_escaped.estate.pending_passive_flag is False
 
+def test_parrot_defender_stays_error_active() -> None:
+    """Under Parrot the attacker reaches bus-off while the owner peaks at TEC=128
+    during the 16 active collisions and recovers to ERROR_ACTIVE afterward."""
+    from parrot_sim.simulator import Attacker, Bus, EcuNode
+
+    owner = EcuNode("ECU_0x120", 0x120, period_bits=2000, parrot=True)
+    atk = Attacker("ATTACKER", 0x120, inject_period_bits=1500, phase=500)
+    bus = Bus([owner, atk])
+    log = bus.run(duration_bits=200_000)
+
+    owner_tec = [s.counters[owner.name][0] for s in log if owner.name in s.counters]
+
+    assert atk.bus_off
+    assert bus.spoof_success == 0
+    assert max(owner_tec) == 128
+    assert owner.estate.state is NodeState.ERROR_ACTIVE
+    assert owner.estate.tec < 128
 
 
 def run_all() -> None:
@@ -242,7 +259,8 @@ def run_all() -> None:
         test_short_gaps_drive_bus_off_and_long_gap_escapes,
         test_collision_counter_edge_cases,
         test_bus_integration_smoke,
-        test_bus_retransmission_and_interframe_gap_timing
+        test_bus_retransmission_and_interframe_gap_timing,
+        test_parrot_defender_stays_error_active
     ]
     for fn in tests:
         fn()

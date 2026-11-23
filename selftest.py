@@ -205,6 +205,24 @@ def test_bus_integration_smoke() -> None:
     assert atk.estate.tec > 0
 
 
+def test_parrot_defender_stays_error_active() -> None:
+    """Under Parrot the attacker reaches bus-off while the owner pays a bounded
+    TEC cost (active error flags) but never leaves ERROR_ACTIVE."""
+    from parrot_sim.simulator import Attacker, Bus, EcuNode
+
+    owner = EcuNode("ECU_0x120", 0x120, period_bits=2000, parrot=True)
+    atk = Attacker("ATTACKER", 0x120, inject_period_bits=1500, phase=500)
+    bus = Bus([owner, atk])
+    log = bus.run(duration_bits=200_000)
+
+    owner_tec = [s.counters[owner.name][0] for s in log if owner.name in s.counters]
+    owner_states = {s.counters[owner.name][2] for s in log if owner.name in s.counters}
+
+    assert atk.bus_off
+    assert bus.spoof_success == 0
+    assert 0 < max(owner_tec) < 128
+    assert owner_states == {NodeState.ERROR_ACTIVE.value}
+    assert owner.estate.tec < max(owner_tec)
 
 
 def run_all() -> None:
@@ -215,7 +233,8 @@ def run_all() -> None:
         test_seventeenth_collision_breaks_symmetry,
         test_short_gaps_drive_bus_off_and_long_gap_escapes,
         test_collision_counter_edge_cases,
-        test_bus_integration_smoke
+        test_bus_integration_smoke,
+        test_parrot_defender_stays_error_active,
     ]
     for fn in tests:
         fn()

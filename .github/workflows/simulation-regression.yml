@@ -43,7 +43,7 @@ jobs:
           required = {
               "E1_baseline",
               "E2_parrot",
-              "E3_naive_strict_both",
+              "E3_defender_cost",
               "E4_sweep",
               "E5_false_positive",
           }
@@ -60,8 +60,14 @@ jobs:
           assert parrot["attacker_busoff"]
           assert not parrot["owner_busoff"]
 
-          naive = summary["E3_naive_strict_both"]
-          assert naive["owner_final_tec"] >= 128
+          # ISO 11898-1: active error flags charge the owner too while the
+          # attacker is error-active, but the owner must stay error-active
+          # and recover once the attacker is ejected.
+          cost = summary["E3_defender_cost"]
+          assert 0 < cost["owner_peak_tec"] < 128, cost
+          assert not cost["owner_ever_error_passive"], cost
+          assert not cost["owner_busoff"], cost
+          assert cost["owner_final_tec"] < cost["owner_peak_tec"], cost
 
           sweep = summary["E4_sweep"]
           assert len(sweep) == 7

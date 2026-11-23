@@ -109,7 +109,7 @@ class Snapshot:
 
 
 class Bus:
-    def __init__(self, nodes, bitrate=500_000, collision_model=None):
+    def __init__(self, nodes, bitrate=500_000):
         self.nodes = nodes
         self.bit_period_s = 1.0 / bitrate
         self.log: list[Snapshot] = []

@@ -1,8 +1,7 @@
 # Report draft — maps to "Project Template.docx"
 
 Fill the template's four sections with the text below. Keep the whole thing
-≤10 pages. Replace the bracketed notes, and reconcile the one modeling knob
-(error-counter deltas) with the Parrot paper before final submission.
+≤10 pages. Replace the bracketed notes before final submission.
 
 ---
 
@@ -41,10 +40,11 @@ Custom-built, so described here (per the template's instructions).
 - **Parrot reaction.** When a defended owner observes its own ID being
   transmitted by another node, it contends in the same bus slot with an
   all-dominant payload for that ID.
-- **Validation.** `selftest.py` asserts 13 properties of the layer (bus-off after
-  exactly 32 transmit errors; error-passive at TEC=128; stuffing never allows 6
-  equal bits; lower ID wins arbitration; same-ID all-dominant owner beats a
-  spoofer in the data field; end-to-end attacker bus-off). All pass.
+- **Validation.** `selftest.py` runs 8 tests of the layer (bit stuffing never
+  allows 6 equal bits; lower ID wins arbitration; 16 active-error collisions
+  drive both nodes to TEC=128; the 17th collision breaks the symmetry; short
+  injection gaps drive bus-off; end-to-end attacker bus-off with the owner
+  staying error-active). All pass.
 - Well-known tools: Python 3 + `matplotlib` (plots only).
 
 ## Experiments
@@ -54,9 +54,8 @@ the figures.
 
 - **E1 — Baseline, no defense.** Owner `0x120` periodic; attacker spoofs `0x120`.
 - **E2 — Parrot ON.** Same, defense enabled.
-- **E3 — Naive mirror.** The owner echoes but *both* colliding transmitters take
-  the error (`CollisionModel mode="strict_both"`) — to show why a naive echo is
-  not enough.
+- **E3 — Defender cost.** From the E2 run, track the owner's own TEC: its peak,
+  when it peaks, whether it ever leaves error-active, and where it ends.
 - **E4 — Injection-rate sweep.** Time-to-bus-off vs attacker rate (83–1250 fps).
 - **E5 — False positives.** Three legitimate ECUs, Parrot ON, no attacker.
 
@@ -71,11 +70,18 @@ the figures.
   contested injection and crosses the bus-off threshold after exactly
   **32 injections ≈ 94 ms**; **0** spoofed frames reach the bus. `ceil(256/8)=32`
   matches the theory exactly.
-- **Parrot protects the defender; naive mirroring does not (fig2).** Under Parrot
-  the defender's TEC stays ~0 (it wins every exchange, each a successful
-  transmit). Under a naive mirror the defender is dragged to ~240 TEC
-  (error-passive, near bus-off) as collateral damage. This is the design point of
-  Parrot and a good discussion of *why* the asymmetry matters.
+- **Parrot is not free for the defender (E3, fig2).** Under ISO 11898-1 rules,
+  while the attacker is error-active every collision is aborted by its Active
+  Error Flag and *both* transmitters take TEC += 8, so the owner's TEC climbs in
+  step with the attacker's and peaks at **121 at ~46 ms**, just below the
+  error-passive threshold (127). Once the attacker turns error-passive its flag
+  is recessive, the owner's frames complete (TEC -= 1 each) and the asymmetry
+  takes over: the attacker reaches bus-off while the owner recovers to 21 and
+  never leaves error-active. An earlier version of our model assumed the owner
+  was never charged (TEC ≈ 0); switching to the standard's error-flag rules
+  showed this understated the cost. The margin is thin (121 vs 127), so a
+  defender that already carries a few errors could be pushed error-passive,
+  a point worth checking against the paper.
 - **Rate scaling (E4, fig3).** Time-to-bus-off ≈ 32 / injection-rate, so a more
   aggressive attacker is ejected *faster* — the defense scales against its worst
   case. Injections-to-bus-off is invariant at 32.
@@ -91,9 +97,9 @@ its appeal and the reason it is "software-only."
 
 **Limitations / critical evaluation (the graded part).**
 - Error frames are modeled by their counter effect, not emitted bit-for-bit.
-- The per-collision TEC bookkeeping is an explicit, tunable model
-  (`CollisionModel`); **the exact deltas must be reconciled with the paper's
-  error-handling analysis.** We state this openly and expose it as one parameter.
+- Per-collision TEC bookkeeping follows the ISO 11898-1 active/passive
+  error-flag rules (as taught in the course's CAN-bus slides), replacing an
+  earlier hand-tuned model that hid the defender's cost.
 - Event-level timing, not analog waveforms — fine for bus-off dynamics, not for
   physical-layer attacks.
 - Per the course FAQ, these are testbed-quality limitations, not bugs: the

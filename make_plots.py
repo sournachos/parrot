@@ -13,7 +13,6 @@ OUT = os.path.join(os.path.dirname(__file__), "out")
 C_ATK = "#D55E00"     # attacker  (orange/red)
 C_DEF = "#0072B2"     # defender/owner (blue)
 C_BASE = "#999999"    # baseline / no-defense (grey)
-C_NAIVE = "#CC79A7"   # naive mirror (magenta)
 C_THRESH = "#B00020"  # bus-off threshold
 
 plt.rcParams.update({
@@ -50,17 +49,22 @@ ax.set_title("Attacker TEC over time: Parrot vs no defense")
 ax.legend(fontsize=9, loc="center right")
 fig.tight_layout(); fig.savefig(f"{OUT}/fig1_attacker_tec.png"); plt.close(fig)
 
-# --- Fig 2: defender collateral -- Parrot protects the owner, naive harms it -
-n = load(f"{OUT}/trace_naive.csv")
+# --- Fig 2: defender collateral -- Parrot's real cost to the owner ----------
+summ = json.load(open(f"{OUT}/summary.json"))
+cost = summ["E3_defender_cost"]
 fig, ax = plt.subplots(figsize=(7.2, 4.2))
-ax.plot(fnum(n, "t_ms"), fnum(n, "owner_tec"), color=C_NAIVE, lw=2.2,
-        label="Naive mirror: defender TEC climbs (collateral damage)")
 ax.plot(fnum(p, "t_ms"), fnum(p, "owner_tec"), color=C_DEF, lw=2.2,
-        label="Parrot: defender stays near TEC=0")
+        label="Defender (owner) TEC under Parrot")
+ax.plot(fnum(p, "t_ms"), fnum(p, "attacker_tec"), color=C_ATK, lw=1.4,
+        alpha=0.6, label="Attacker TEC (for reference)")
 ax.axhline(127, color="#888", ls=":", lw=1, label="error-passive (TEC>127)")
-ax.set_xlabel("time (ms)"); ax.set_ylabel("Defender (owner) TEC")
-ax.set_title("Cost to the defender: Parrot vs naive mirroring")
-ax.legend(fontsize=9, loc="center right")
+ax.annotate(f"peak {cost['owner_peak_tec']}",
+            (cost["owner_peak_t_ms"], cost["owner_peak_tec"]),
+            textcoords="offset points", xytext=(10, 10), fontsize=9, color=C_DEF,
+            arrowprops=dict(arrowstyle="-", color=C_DEF, lw=0.8))
+ax.set_xlabel("time (ms)"); ax.set_ylabel("Transmit Error Counter (TEC)")
+ax.set_title("Cost to the defender: TEC spikes, stays error-active, recovers")
+ax.legend(fontsize=9, loc="center right", bbox_to_anchor=(1.0, 0.72))
 fig.tight_layout(); fig.savefig(f"{OUT}/fig2_defender_collateral.png"); plt.close(fig)
 
 # --- Fig 3: time-to-bus-off vs injection rate -------------------------------
@@ -78,7 +82,6 @@ for x, y in zip(rate, ttb):
 fig.tight_layout(); fig.savefig(f"{OUT}/fig3_time_to_busoff.png"); plt.close(fig)
 
 # --- Fig 4: spoofs that reached the bus -------------------------------------
-summ = json.load(open(f"{OUT}/summary.json"))
 landed = [summ["E1_baseline"]["spoofs_landed"], summ["E2_parrot"]["spoofs_landed"]]
 fig, ax = plt.subplots(figsize=(5.4, 4.2))
 bars = ax.bar(["No defense", "Parrot ON"], landed, color=[C_BASE, C_DEF], width=0.55)

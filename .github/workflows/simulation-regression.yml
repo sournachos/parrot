@@ -53,6 +53,54 @@ jobs:
 
           baseline = summary["E1_baseline"]
           assert baseline["spoofs_landed"] > 0
+          assert baseline["attacker_busoff"]
+
+          parrot = summary["E2_parrot"]
+          assert parrot["spoofs_landed"] == 0
+          assert parrot["attacker_busoff"]
+          assert not parrot["owner_busoff"]
+
+          # ISO 11898-1: under automatic retransmission, 16 active collisions
+          # charge both contenders to TEC=128 (ERROR_PASSIVE); on the 17th
+          # collision the dominant owner completes (TEC=127, ERROR_ACTIVE)
+          # and recovers while the attacker is driven to BUS_OFF.
+          cost = summary["E3_defender_cost"]
+          assert 0 < cost["owner_peak_tec"] <= 128, cost
+          assert cost["owner_final_state"] == "error_active", cost
+          assert not cost["owner_busoff"], cost
+          assert cost["owner_final_tec"] < cost["owner_peak_tec"], cost
+
+          sweep = summary["E4_sweep"]
+          assert len(sweep) == 7
+          assert all(row["time_to_busoff_ms"] > 0 for row in sweep)
+
+          false_positive = summary["E5_false_positive"]
+          assert not false_positive["any_busoff"]
+          assert false_positive["max_tec"] == 0
+          assert false_positive["spoofs_detected"] == 0
+
+          print("All experiment outcome contracts passed.")
+          PY
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          summary = json.loads(Path("out/summary.json").read_text())
+
+          required = {
+              "E1_baseline",
+              "E2_parrot",
+              "E3_defender_cost",
+              "E4_sweep",
+              "E5_false_positive",
+          }
+          assert required <= summary.keys(), (
+              f"Missing experiments: {sorted(required - summary.keys())}"
+          )
+
+          baseline = summary["E1_baseline"]
+          assert baseline["spoofs_landed"] > 0
           assert not baseline["attacker_busoff"]
 
           parrot = summary["E2_parrot"]

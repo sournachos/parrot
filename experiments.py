@@ -10,7 +10,7 @@ Scenarios
   E5 falsepos  : legit-only bus, Parrot ON, no attacker  -> nobody bus-off
 """
 import csv, json, os
-from parrot_sim.can_core import CollisionModel, NodeState
+from parrot_sim.can_core import NodeState
 from parrot_sim.simulator import EcuNode, Attacker, Bus
 
 OUT = os.path.join(os.path.dirname(__file__), "out")
@@ -57,7 +57,7 @@ HEADER = ["t_ms", "owner_tec", "owner_state", "attacker_tec",
 # ---- E1 baseline: no defense ----------------------------------------------
 owner = EcuNode("ECU_0x120", 0x120, period_bits=2000, parrot=False)
 atk = Attacker("ATTACKER", 0x120, inject_period_bits=1500, phase=500)
-bus = Bus([owner, atk], BITRATE, CollisionModel(mode="parrot"))
+bus = Bus([owner, atk], BITRATE)
 bus.run(200_000)
 write_csv(f"{OUT}/trace_baseline.csv", trace_rows(bus, owner.name, atk.name), HEADER)
 summary["E1_baseline"] = {
@@ -71,7 +71,7 @@ summary["E1_baseline"] = {
 # ---- E2 parrot: defense ON -------------------------------------------------
 owner = EcuNode("ECU_0x120", 0x120, period_bits=2000, parrot=True)
 atk = Attacker("ATTACKER", 0x120, inject_period_bits=1500, phase=500)
-bus = Bus([owner, atk], BITRATE, CollisionModel(mode="parrot"))
+bus = Bus([owner, atk], BITRATE)
 bus.run(200_000)
 write_csv(f"{OUT}/trace_parrot.csv", trace_rows(bus, owner.name, atk.name), HEADER)
 summary["E2_parrot"] = {
@@ -87,7 +87,7 @@ summary["E2_parrot"] = {
 # ---- E3 naive mirroring: strict_both (why naive echo fails) ----------------
 owner = EcuNode("ECU_0x120", 0x120, period_bits=2000, parrot=True)
 atk = Attacker("ATTACKER", 0x120, inject_period_bits=1500, phase=500)
-bus = Bus([owner, atk], BITRATE, CollisionModel(mode="strict_both"))
+bus = Bus([owner, atk], BITRATE)
 bus.run(200_000)
 write_csv(f"{OUT}/trace_naive.csv", trace_rows(bus, owner.name, atk.name), HEADER)
 summary["E3_naive_strict_both"] = {
@@ -107,7 +107,7 @@ sweep = []
 for period in [400, 700, 1000, 1500, 2500, 4000, 6000]:
     o = EcuNode("ECU_0x120", 0x120, period_bits=2000, parrot=True)
     a = Attacker("ATTACKER", 0x120, inject_period_bits=period, phase=200)
-    b = Bus([o, a], BITRATE, CollisionModel(mode="parrot"))
+    b = Bus([o, a], BITRATE)
     b.run(600_000)
     rate_hz = 1.0 / (period * BIT_US * 1e-6)
     sweep.append({
@@ -125,7 +125,7 @@ summary["E4_sweep"] = sweep
 e0 = EcuNode("ECU_0x120", 0x120, period_bits=2000, phase=0, parrot=True)
 e1 = EcuNode("ECU_0x200", 0x200, period_bits=2600, phase=300, parrot=True)
 e2 = EcuNode("ECU_0x300", 0x300, period_bits=3100, phase=700, parrot=True)
-bus = Bus([e0, e1, e2], BITRATE, CollisionModel(mode="parrot"))
+bus = Bus([e0, e1, e2], BITRATE)
 bus.run(300_000)
 summary["E5_false_positive"] = {
     "scenario": "3 legit ECUs, Parrot ON, no attacker",

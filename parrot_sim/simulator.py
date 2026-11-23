@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .can_core import (
-    Frame, ErrorState, NodeState, CollisionModel, resolve_collision, encode,
+    Frame, ErrorState, NodeState, resolve_collision, apply_collision_errors,  encode,
 )
 
 IFS_BITS = 3  # inter-frame space
@@ -112,7 +112,6 @@ class Bus:
     def __init__(self, nodes, bitrate=500_000, collision_model=None):
         self.nodes = nodes
         self.bit_period_s = 1.0 / bitrate
-        self.model = collision_model or CollisionModel()
         self.log: list[Snapshot] = []
         self.spoof_success = 0
         self.spoof_suppressed = 0
@@ -149,40 +148,39 @@ class Bus:
                     if n.owned_id in spoofed_ids and n not in [c[0] for c in contenders]:
                         contenders.append((n, n.parrot_frame()))
 
-            # --- resolve ----------------------------------------------------
+            # --- resolve & apply CAN error rules ---------------------------
             if len(contenders) == 1:
                 node, frame = contenders[0]
                 winner, losers_bit, losers_arb = node, [], []
                 result_field = "solo"
+                node.estate.transmit_ok()
+                for obs in self.nodes:
+                    if obs is not node and not obs.bus_off:
+                        obs.estate.receive_ok()
             else:
                 entries = [(n, encode(f)) for (n, f) in contenders]
-                res = resolve_collision(entries, self.model)
+                contender_nodes = [n for n, _ in contenders]
+                observers = [n for n in self.nodes if n not in contender_nodes]
+                res = resolve_collision(entries)
+                res = apply_collision_errors(contender_nodes, res, observers)
                 winner = res.winner
                 losers_bit = res.bit_error_losers
                 losers_arb = res.arb_losers
                 result_field = res.resolved_at_field
-                if self.model.mode == "strict_both":
-                    # naive mirroring: owner ALSO takes the hit
-                    losers_bit = list({*losers_bit, winner}) if any(
-                        isinstance(n, Attacker) for n, _ in contenders) else losers_bit
+
+            # Active Error Flag aborted the frame -> no winner
+            if winner is None:
+                if any(isinstance(n, Attacker) for n, _ in contenders):
+                    self.spoof_suppressed += 1
+                for n, _ in contenders:
+                    if hasattr(n, "injections") and n in losers_bit:
+                        n.injections += 1
+                    n.scheduled_sent(t)
+                self._record(t, f"abort({result_field})", "NONE", False)
+                t += 20 + IFS_BITS
+                continue
 
             winning_frame = dict((id(n), f) for (n, f) in contenders)[id(winner)]
-
-            # counter updates. In naive "strict_both" the winner is also in
-            # losers_bit (it took the error too) and must NOT get a success
-            # credit -- that is exactly why naive mirroring is self-defeating.
-            if winner not in losers_bit:
-                winner.estate.transmit_ok()
-            for ln in losers_bit:
-                delta = (self.model.attacker_delta if isinstance(ln, Attacker)
-                         else self.model.defender_delta)
-                ln.estate.transmit_error(delta)
-            # receivers of a clean frame
-            for n in self.nodes:
-                if n is winner or n in losers_bit or n in losers_arb:
-                    continue
-                if not n.bus_off:
-                    n.estate.receive_ok()
 
             # did an attacker's spoofed value reach the bus?
             spoof_landed = isinstance(winner, Attacker)
@@ -192,7 +190,7 @@ class Bus:
                 else:
                     self.spoof_suppressed += 1
 
-            # bookkeeping: winner + arbitration-losers consumed their slot
+            # bookkeeping: winner + losers consumed their slot
             winner.scheduled_sent(t)
             for ln in losers_arb:
                 ln.scheduled_sent(t)        # retry at their next natural period

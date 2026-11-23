@@ -204,6 +204,32 @@ def test_bus_integration_smoke() -> None:
     assert len(log) > 0
     assert atk.estate.tec > 0
 
+def test_bus_retransmission_and_interframe_gap_timing() -> None:
+    """Verify fast gap (3 us) drives pending passive flag to BUS_OFF while slow gap (31 us) escapes."""
+    from parrot_sim.simulator import Bus, EcuNode
+
+    # Fast sender (3 us @ 1 Mbps -> 8 + 3 = 11 recessive bits < 14) -> Form Error -> BUS_OFF
+    fast_alice = EcuNode("FastAlice", 0x00F, b"\x00" * 7, period_bits=1, phase=0, min_tx_gap_us=3.0)
+    eve_trapped = EcuNode("Eve", 0x010, b"\xFF" * 7, period_bits=100_000, phase=100_000)
+    eve_trapped.estate.tec = 136
+    eve_trapped.estate._reclassify()
+    eve_trapped.estate.arm_passive_error_flag()
+
+    bus_fast = Bus([fast_alice, eve_trapped], bitrate=1_000_000)
+    bus_fast.run(duration_bits=5_000)
+    assert eve_trapped.estate.state is NodeState.BUS_OFF
+
+    # Slow sender (31 us @ 1 Mbps -> 8 + 31 = 39 recessive bits >= 14) -> Escapes
+    slow_alice = EcuNode("SlowAlice", 0x00F, b"\x00" * 7, period_bits=1, phase=0, min_tx_gap_us=31.0)
+    eve_escaped = EcuNode("Eve", 0x010, b"\xFF" * 7, period_bits=100_000, phase=100_000)
+    eve_escaped.estate.tec = 136
+    eve_escaped.estate._reclassify()
+    eve_escaped.estate.arm_passive_error_flag()
+
+    bus_slow = Bus([slow_alice, eve_escaped], bitrate=1_000_000)
+    bus_slow.run(duration_bits=5_000)
+    assert eve_escaped.estate.state is NodeState.ERROR_PASSIVE
+    assert eve_escaped.estate.pending_passive_flag is False
 
 
 
@@ -215,7 +241,8 @@ def run_all() -> None:
         test_seventeenth_collision_breaks_symmetry,
         test_short_gaps_drive_bus_off_and_long_gap_escapes,
         test_collision_counter_edge_cases,
-        test_bus_integration_smoke
+        test_bus_integration_smoke,
+        test_bus_retransmission_and_interframe_gap_timing
     ]
     for fn in tests:
         fn()
